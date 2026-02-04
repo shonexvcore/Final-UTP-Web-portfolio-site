@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UNDER THE PARK | Creative Studio</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,600;1,400&family=Syncopate:wght@400;700&display=swap" rel="stylesheet">
+    
+    <!-- Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/Flip.min.js"></script>
+    <script src="https://unpkg.com/lenis@1.0.45/dist/lenis.min.js"></script>
+
+    <!-- 3D & AI -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+
+    <style>
+        :root {
+            --bg: #050505;
+            --text: #e0e0e0;
+            --accent: #64ffb4;
+            --cursor-size: 20px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; cursor: none; }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Cormorant Garamond', serif;
+            overflow-x: hidden;
+            width: 100%;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+        body.ready { opacity: 1; }
+
+        /* --- 3D Background --- */
+        #canvas-background {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: -1; pointer-events: none; opacity: 0.8;
+        }
+
+        /* --- Camera Feed (Hidden) --- */
+        #input_video {
+            position: absolute; bottom: 0; left: 0; width: 1px; height: 1px;
+            opacity: 0; pointer-events: none; z-index: -10; visibility: hidden;
+        }
+
+        /* --- UI Elements --- */
+        .mode-switch-container {
+            position: fixed; bottom: 2rem; right: 2rem;
+            z-index: 1000;
+            display: flex; flex-direction: column; align-items: flex-end; gap: 0.5rem;
+        }
+        .mode-label {
+            font-family: 'Syncopate', sans-serif; font-size: 0.7rem;
+            letter-spacing: 0.1em; color: #666; transition: color 0.3s;
+        }
+        .mode-switch {
+            width: 50px; height: 26px;
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 13px;
+            position: relative; cursor: pointer;
+            transition: border-color 0.3s;
+        }
+        .mode-knob {
+            width: 18px; height: 18px;
+            background: #fff; border-radius: 50%;
+            position: absolute; top: 3px; left: 3px;
+            transition: transform 0.3s cubic-bezier(0.19, 1, 0.22, 1), background-color 0.3s;
+        }
+        .mode-switch.active { border-color: var(--accent); }
+        .mode-switch.active .mode-knob { transform: translateX(24px); background-color: var(--accent); }
+        .mode-switch.active + .mode-label { color: var(--accent); }
+
+        .toast-msg {
+            position: fixed; bottom: 5rem; right: 2rem;
+            background: rgba(10, 10, 10, 0.8);
+            border-left: 2px solid var(--accent);
+            padding: 1rem 1.5rem;
+            font-family: 'Syncopate', sans-serif; font-size: 0.7rem; letter-spacing: 0.05em;
+            color: #fff; backdrop-filter: blur(5px);
+            transform: translateX(120%); transition: transform 0.5s ease;
+            z-index: 999;
+            max-width: 250px; line-height: 1.5;
+        }
+        .toast-msg.show { transform: translateX(0); }
+
+        /* --- Header & Nav --- */
+        .site-header {
+            position: fixed; top: 0; left: 0; width: 100%;
+            padding: 2.5rem 4rem; z-index: 100;
+            display: flex; align-items: center; justify-content: space-between;
+            pointer-events: none;
+        }
+        .header-left { display: flex; align-items: center; pointer-events: auto; }
+        .company-name {
+            font-family: 'Syncopate', sans-serif; font-weight: 700; font-size: 1.2rem;
+            letter-spacing: 0.1em; text-transform: uppercase; mix-blend-mode: exclusion;
+        }
+        
+        .nav-trigger {
+            pointer-events: auto; cursor: pointer;
+            font-family: 'Syncopate', sans-serif; font-size: 0.8rem; letter-spacing: 0.2em;
+            display: flex; gap: 2rem;
+        }
+        .nav-item { position: relative; transition: color 0.3s; }
+        .nav-item:hover { color: var(--accent); }
+
+        /* --- Overlays --- */
+        .page-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(5, 5, 5, 0.95);
+            z-index: 2000;
+            display: flex; justify-content: center; align-items: center;
+            opacity: 0; pointer-events: none; transition: opacity 0.5s ease;
+            backdrop-filter: blur(10px);
+        }
+        .page-overlay.active { opacity: 1; pointer-events: auto; }
+        
+        .overlay-content { text-align: center; max-width: 800px; padding: 2rem; }
+        .overlay-title { font-family: 'Syncopate', sans-serif; font-size: 4vw; margin-bottom: 2rem; color: var(--accent); }
+        .overlay-text { font-size: 1.1rem; line-height: 2; margin-bottom: 3rem; color: #ccc; }
+        .overlay-close {
+            font-family: 'Syncopate', sans-serif; font-size: 0.9rem; letter-spacing: 0.2em;
+            cursor: pointer; border: 1px solid #333; padding: 1rem 2rem; display: inline-block;
+            transition: all 0.3s;
+        }
+        .overlay-close:hover { background: #fff; color: #000; }
+
+        /* --- Brain Loader --- */
+        #loader {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: #000; z-index: 3000;
+            display: flex; justify-content: center; align-items: center;
+        }
+        .brain-loader-container {
+            position: absolute; width: 300px; height: 300px;
+            transform-style: preserve-3d; perspective: 1000px;
+        }
+        .brain-ring {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            border: 1px solid rgba(100, 255, 180, 0.6);
+            border-radius: 50%; box-shadow: 0 0 10px rgba(100, 255, 180, 0.4);
+            opacity: 0.8;
+        }
+        .brain-ring:nth-child(1) { width: 100px; height: 140px; animation: brainSpin 4s linear infinite; border-style: dashed; }
+        .brain-ring:nth-child(2) { width: 110px; height: 130px; animation: brainSpin 6s linear infinite reverse; transform: translate(-50%, -50%) rotateY(45deg); }
+        .brain-ring:nth-child(3) { width: 90px; height: 150px; animation: brainSpin 5s linear infinite; transform: translate(-50%, -50%) rotateY(90deg); border-color: rgba(255,255,255,0.3); }
+        .brain-ring:nth-child(4) { width: 120px; height: 110px; animation: brainSpin 7s linear infinite reverse; transform: translate(-50%, -50%) rotateX(60deg); }
+        .brain-ring:nth-child(5) { width: 80px; height: 80px; animation: brainSpin 3s linear infinite; border: 2px solid #fff; opacity: 0.5; }
+        @keyframes brainSpin { 0% { transform: translate(-50%, -50%) rotate3d(1, 1, 1, 0deg); } 100% { transform: translate(-50%, -50%) rotate3d(1, 1, 1, 360deg); } }
+        .loader-count { position: absolute; bottom: 4rem; right: 4rem; font-family: 'Syncopate', sans-serif; font-size: 8vw; color: #fff; line-height: 1; }
+
+        /* --- Cursor --- */
+        #cursor {
+            position: fixed; top: 0; left: 0; width: var(--cursor-size); height: var(--cursor-size);
+            border: 1px solid rgba(255,255,255,0.8); border-radius: 50%;
+            pointer-events: none; z-index: 9999; transform: translate(-50%, -50%);
+            mix-blend-mode: difference; transition: width 0.3s cubic-bezier(0.19, 1, 0.22, 1), height 0.3s cubic-bezier(0.19, 1, 0.22, 1), background-color 0.3s;
+        }
+        #cursor.hovered { width: 50px; height: 50px; background-color: rgba(255,255,255,0.1); border-color: transparent; backdrop-filter: blur(2px); }
+
+        /* --- Layout --- */
+        .wrapper { padding: 0 4rem; max-width: 1600px; margin: 0 auto; position: relative; z-index: 10; }
+        .hero { height: 100vh; display: flex; flex-direction: column; justify-content: center; position: relative; }
+        .hero-title { font-family: 'Syncopate', sans-serif; font-size: 7vw; line-height: 0.9; text-transform: uppercase; mix-blend-mode: exclusion; }
+        .hero-sub { margin-top: 2rem; font-size: 1.2rem; letter-spacing: 0.05em; color: #888; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #222; padding-top: 1rem; }
+        
+        /* About Intro Section */
+        .about-intro {
+            padding-top: 15vh; padding-bottom: 15vh;
+            display: flex; flex-direction: column; align-items: center; text-align: center;
+        }
+        .intro-origin { margin-bottom: 4rem; }
+        .origin-label {
+            font-family: 'Syncopate', sans-serif; font-size: 0.8rem; letter-spacing: 0.2em;
+            color: var(--accent); display: block; margin-bottom: 1rem;
+        }
+        .origin-title {
+            font-family: 'Syncopate', sans-serif; font-size: 3vw; line-height: 1.2;
+            text-transform: uppercase; font-weight: 700;
+        }
+        .intro-body { max-width: 800px; margin: 0 auto; }
+        .intro-jp {
+            font-size: 1.2rem; line-height: 2.2; margin-bottom: 3rem;
+            font-feature-settings: "palt"; letter-spacing: 0.05em;
+        }
+        .intro-en {
+            font-size: 1.1rem; line-height: 1.8; color: #ccc;
+            font-family: 'Cormorant Garamond', serif; font-style: italic;
+        }
+
+        /* Works Section (Adjusted padding to create space for 3D text) */
+        .works-section { padding-top: 25vh; padding-bottom: 20vh; }
+        
+        /* .section-header { ... } REMOVED based on request */
+
+        .work-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8vw 4vw; }
+        .work-item { position: relative; display: flex; flex-direction: column; cursor: pointer; }
+        .work-item:nth-child(even) { margin-top: 15vh; }
+
+        .img-reveal { width: 100%; aspect-ratio: 16/10; overflow: hidden; position: relative; background: #0a0a0a; }
+        .img-reveal img { width: 100%; height: 120%; object-fit: cover; object-position: center; filter: grayscale(100%); transition: filter 0.5s ease; will-change: transform; }
+        .work-item:hover .img-reveal img { filter: grayscale(0%); }
+
+        .type-badge {
+            position: absolute; top: 1rem; left: 1rem;
+            background: rgba(0,0,0,0.7); color: #fff; border: 1px solid rgba(255,255,255,0.3);
+            font-family: 'Syncopate', sans-serif; font-size: 0.6rem; padding: 0.3rem 0.6rem;
+            z-index: 2; backdrop-filter: blur(5px);
+        }
+        .work-year { position: absolute; top: 1rem; right: 1rem; background: #fff; color: #000; font-family: 'Syncopate', sans-serif; font-size: 0.7rem; padding: 0.3rem 0.8rem; opacity: 0; transition: opacity 0.4s; z-index: 2; }
+        .work-item:hover .work-year { opacity: 1; }
+        .work-info { margin-top: 1.5rem; display: flex; justify-content: space-between; align-items: flex-start; }
+        .work-title { font-family: 'Syncopate', sans-serif; font-size: 1.5rem; text-transform: uppercase; }
+        .work-cat { font-size: 0.9rem; color: #aaa; font-style: italic; }
+
+        /* --- Detail Overlay --- */
+        #detail-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100dvh; background: #050505; z-index: 1500; opacity: 0; pointer-events: none; transition: opacity 0.3s; }
+        #detail-overlay.active { opacity: 1; pointer-events: auto; }
+        .detail-img-wrapper { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; }
+        .detail-img-wrapper img { width: 100%; height: 100%; object-fit: cover; filter: brightness(0.4); transition: filter 1s ease; }
+        #detail-overlay.content-active .detail-img-wrapper img { filter: brightness(0.1); }
+        .detail-video-container, .detail-gallery-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 1s ease; z-index: 5; pointer-events: none; }
+        .detail-video-container.playing, .detail-gallery-container.playing { opacity: 1; pointer-events: auto; }
+        .detail-video-container video { width: 100%; height: 100%; object-fit: cover; }
+        .detail-gallery-container { display: flex; align-items: center; overflow-x: auto; padding: 0 4rem; scrollbar-width: none; }
+        .detail-gallery-container::-webkit-scrollbar { display: none; }
+        .gallery-track { display: flex; gap: 4rem; align-items: center; padding-right: 10rem; }
+        .gallery-img { height: 60vh; width: auto; object-fit: cover; opacity: 0; transform: translateX(50px); filter: grayscale(0%); transition: transform 0.5s ease; }
+        .gallery-img:hover { transform: scale(1.02); }
+        .detail-content { position: absolute; bottom: 4rem; left: 4rem; z-index: 10; color: #fff; opacity: 0; transition: opacity 0.5s ease; }
+        .detail-content.hidden { opacity: 0 !important; pointer-events: none; }
+        .detail-meta { font-family: 'Syncopate', sans-serif; color: #888; letter-spacing: 0.2em; margin-bottom: 1rem; display: block; }
+        .detail-title { font-family: 'Syncopate', sans-serif; font-size: 5vw; line-height: 1; margin-bottom: 2rem; text-transform: uppercase; }
+        .detail-desc { max-width: 500px; font-size: 1.1rem; line-height: 1.8; color: #ccc; margin-bottom: 2rem; }
+        .action-btn { display: inline-flex; align-items: center; gap: 1rem; padding: 1rem 2rem; border: 1px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.05); backdrop-filter: blur(5px); font-family: 'Syncopate', sans-serif; font-size: 0.8rem; letter-spacing: 0.1em; text-transform: uppercase; color: #fff; transition: all 0.3s; }
+        .action-btn:hover { background: #fff; color: #000; }
+        .close-btn { position: absolute; top: 3rem; right: 4rem; font-family: 'Syncopate', sans-serif; color: #fff; font-size: 1rem; cursor: pointer; z-index: 20; opacity: 0; mix-blend-mode: difference; padding: 10px; }
+        .close-btn span { position: relative; }
+        .close-btn span::after { content: ''; position: absolute; bottom: -5px; left: 0; width: 0; height: 1px; background: #fff; transition: 0.3s; }
+        .close-btn:hover span::after { width: 100%; }
+
+        footer { height: 50vh; display: flex; align-items: center; justify-content: center; border-top: 1px solid #222; position: relative; z-index: 10; background: transparent; }
+        .footer-link { font-family: 'Syncopate', sans-serif; font-size: 4vw; text-transform: uppercase; color: #333; transition: color 0.3s; cursor: pointer; }
+        .footer-link:hover { color: #fff; }
+
+        /* Helpers */
+        .play-icon { width: 0; height: 0; border-top: 5px solid transparent; border-bottom: 5px solid transparent; border-left: 8px solid currentColor; }
+        .gallery-icon { width: 10px; height: 10px; border: 1px solid currentColor; display: grid; grid-template-columns: 1fr 1fr; gap: 1px; }
+
+        @media (max-width: 768px) {
+            .site-header { padding: 1.5rem; }
+            .wrapper { padding: 0 1.5rem; }
+            .hero-title { font-size: 12vw; }
+            .origin-title { font-size: 8vw; }
+            .work-list { grid-template-columns: 1fr; gap: 10vh; }
+            .work-item:nth-child(even) { margin-top: 0; }
+            .detail-content { left: 1.5rem; bottom: 2rem; }
+            .detail-title { font-size: 10vw; }
+            .close-btn { right: 1.5rem; top: 2rem; }
+            .gallery-img { height: 40vh; }
+            .detail-gallery-container { padding: 0 1.5rem; }
+            .brain-loader-container { transform: scale(0.6); }
+            .mode-switch-container { bottom: 1.5rem; right: 1.5rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Camera Feed (Always Hidden) -->
+    <video id="input_video" autoplay playsinline muted></video>
+
+    <!-- 3D Particle Background -->
+    <div id="canvas-background"></div>
+
+    <!-- UI: 3D Mode Switch -->
+    <div class="mode-switch-container">
+        <div class="mode-switch hover-target" id="cam-switch">
+            <div class="mode-knob"></div>
+        </div>
+        <div class="mode-label">3D INTERACTION</div>
+    </div>
+    
+    <!-- Notification Toast -->
+    <div class="toast-msg" id="toast-msg">
+        FACE TRACKING ENABLED<br>
+        <span style="font-size: 0.6em; opacity: 0.7;">MOVE CLOSER TO ZOOM IN</span>
+    </div>
+
+    <header class="site-header">
+        <div class="header-left">
+            <div class="company-name hover-target">UNDER THE PARK</div>
+        </div>
+        <nav class="nav-trigger">
+            <div class="nav-item hover-target" onclick="openPage('about')">ABOUT</div>
+            <div class="nav-item hover-target" onclick="openPage('contact')">CONTACT</div>
+        </nav>
+    </header>
+
+    <!-- Page Overlays -->
+    <div id="about-page" class="page-overlay">
+        <div class="overlay-content">
+            <h2 class="overlay-title">ABOUT US</h2>
+            <p class="overlay-text">
+                UNDER THE PARK is a creative studio based in Tokyo.<br>
+                We visualize the unseen and archive memories into light.<br>
+                Specializing in high-end visual production, we bridge the gap between<br>
+                digital innovation and cinematic storytelling.
+            </p>
+            <div class="overlay-close hover-target" onclick="closePage('about')">CLOSE</div>
+        </div>
+    </div>
+
+    <div id="contact-page" class="page-overlay">
+        <div class="overlay-content">
+            <h2 class="overlay-title">CONTACT</h2>
+            <p class="overlay-text">
+                For project inquiries and collaborations:<br>
+                hello@underthepark.jp<br><br>
+                TOKYO OFFICE<br>
+                3-12-8 Shibuya, Tokyo 150-0002
+            </p>
+            <div class="overlay-close hover-target" onclick="closePage('contact')">CLOSE</div>
+        </div>
+    </div>
+
+    <!-- Loader -->
+    <div id="loader">
+        <div class="brain-loader-container">
+            <div class="brain-ring"></div>
+            <div class="brain-ring"></div>
+            <div class="brain-ring"></div>
+            <div class="brain-ring"></div>
+            <div class="brain-ring"></div>
+        </div>
+        <div class="loader-count">00</div>
+    </div>
+
+    <div id="cursor"></div>
+
+    <main id="main">
+        <section class="hero wrapper">
+            <h1 class="hero-title">
+                <div class="line">BENEATH</div>
+                <div class="line">THE</div>
+                <div class="line" style="text-align: right; color: #444;">SURFACE</div>
+            </h1>
+            <div class="hero-sub">
+                <span>SCROLL TO EXPLORE</span>
+                <span>TOKYO, JP &mdash; 2025</span>
+            </div>
+        </section>
+
+        <!-- Intro Section -->
+        <section class="about-intro wrapper">
+            <div class="intro-origin">
+                <span class="origin-label">OUR ORIGIN</span>
+                <h2 class="origin-title">THE "PARK" STANDS FOR<br>PERFECT QUALITY</h2>
+            </div>
+            <div class="intro-body">
+                <p class="intro-jp">
+                    UNDER THE PARKの『PARK』は、PERFECT QUALITYに由来します。<br>
+                    東京を拠点に、映像、写真、デザインを横断するクリエイティブ・コレクティブ。<br>
+                    洗練された美学と鋭敏な感性で、見えざる本質を捉え、<br>
+                    普遍的な価値を持つ『最高品質』のビジュアルへと昇華させます。
+                </p>
+                <p class="intro-en">
+                    The 'PARK' in our name stands for PERFECT QUALITY.<br>
+                    Based in Tokyo, we are a creative collective traversing film, photography, and design.<br>
+                    With refined aesthetics and acute sensibility, we capture the unseen essence,<br>
+                    sublimating it into visual experiences of timeless value.
+                </p>
+            </div>
+        </section>
+
+        <section class="works-section wrapper">
+            <!-- Header REMOVED -->
+            <div class="work-list"></div>
+        </section>
+
+        <footer class="wrapper">
+            <div class="footer-link hover-target" onclick="openPage('contact')">Contact Us</div>
+        </footer>
+    </main>
+
+    <!-- Detail Overlay -->
+    <div id="detail-overlay">
+        <div class="close-btn hover-target" onclick="closeDetail()"><span>CLOSE VIEW</span></div>
+        <div class="detail-img-wrapper" id="detail-target"></div>
+        <div class="detail-video-container" id="video-container">
+            <video id="project-video" loop muted playsinline></video>
+        </div>
+        <div class="detail-gallery-container" id="gallery-container">
+            <div class="gallery-track" id="gallery-track"></div>
+        </div>
+        <div class="detail-content">
+            <span class="detail-meta">CATEGORY / YEAR</span>
+            <h2 class="detail-title">PROJECT TITLE</h2>
+            <p class="detail-desc">Description text.</p>
+            <button class="action-btn hover-target" id="action-btn" onclick="activateContent()">
+                <div class="icon-box" id="btn-icon"></div>
+                <span id="btn-text">Action</span>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // ===========================================
+        // PART 1: THREE.JS BACKGROUND & TEXT MORPH
+        // ===========================================
+        
+        let scene, camera, renderer, points, material;
+        let geometry, basePositions, textPositions; 
+        let morphProgress = 0; 
+        let targetScale = 1.0;
+        let currentScale = 1.0;
+        let time = 0;
+        
+        const COLORS = [
+            new THREE.Color('#64ffb4'), // Green
+            new THREE.Color('#64c4ff'), // Blue
+            new THREE.Color('#b464ff'), // Purple
+            new THREE.Color('#ffae64')  // Orange
+        ];
+        let currentColorIndex = 0;
+
+        function initThree() {
+            const container = document.getElementById('canvas-background');
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x050505, 0.02);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 8;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            container.appendChild(renderer.domElement);
+
+            createParticles();
+            startColorCycle();
+
+            window.addEventListener('resize', onWindowResize, false);
+            animate();
+        }
+
+        // --- Helper: Create Coordinates from Text ---
+        function getTextCoordinates() {
+            const canvas = document.createElement('canvas');
+            const width = 2048;
+            const height = 1024;
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, width, height);
+            
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '900 180px sans-serif'; 
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            ctx.fillText("WORKS BY", width / 2, height / 2 - 120);
+            ctx.fillText("UNDER THE PARK", width / 2, height / 2 + 120);
+            
+            const imgData = ctx.getImageData(0, 0, width, height);
+            const data = imgData.data;
+            const coords = [];
+            
+            const gap = 4; 
+            for (let y = 0; y < height; y += gap) {
+                for (let x = 0; x < width; x += gap) {
+                    if (data[(y * width + x) * 4] > 128) {
+                        const scale = 0.008; 
+                        const px = (x - width / 2) * scale;
+                        const py = -(y - height / 2) * scale;
+                        coords.push({x: px, y: py});
+                    }
+                }
+            }
+            
+            for (let i = coords.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [coords[i], coords[j]] = [coords[j], coords[i]];
+            }
+            
+            return coords;
+        }
+
+        function createParticles() {
+            const count = 20000; 
+            const posArray = [];
+            const baseArr = [];
+            const textArr = [];
+            const colorArr = [];
+            const initialColor = COLORS[0];
+
+            const textCoords = getTextCoordinates();
+
+            for (let i = 0; i < count; i++) {
+                // Base Shape
+                let bx, by, bz;
+                if (Math.random() > 0.4) {
+                    const theta = Math.random() * Math.PI * 2;
+                    const r = 3 + Math.random() * 3;
+                    bx = Math.cos(theta) * r;
+                    by = (Math.random() - 0.5) * 0.5;
+                    bz = Math.sin(theta) * r;
+                } else {
+                    const theta = Math.random() * Math.PI * 2;
+                    const phi = Math.acos((Math.random() * 2) - 1);
+                    const r = 2.0;
+                    bx = r * Math.sin(phi) * Math.cos(theta);
+                    by = r * Math.sin(phi) * Math.sin(theta);
+                    bz = r * Math.cos(phi);
+                }
+                baseArr.push(bx, by, bz);
+                posArray.push(bx, by, bz);
+
+                // Text Shape
+                const textP = textCoords[i % textCoords.length];
+                let tx = textP.x;
+                let ty = textP.y;
+                let tz = (Math.random() - 0.5) * 0.2; 
+                textArr.push(tx, ty, tz);
+
+                colorArr.push(initialColor.r, initialColor.g, initialColor.b);
+            }
+
+            geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(posArray, 3));
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colorArr, 3));
+            
+            basePositions = new Float32Array(baseArr);
+            textPositions = new Float32Array(textArr);
+
+            const canvas = document.createElement('canvas');
+            canvas.width = 32; canvas.height = 32;
+            const ctx = canvas.getContext('2d');
+            const grad = ctx.createRadialGradient(16,16,0,16,16,16);
+            grad.addColorStop(0, 'rgba(255,255,255,1)');
+            grad.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = grad; ctx.fillRect(0,0,32,32);
+            const texture = new THREE.Texture(canvas);
+            texture.needsUpdate = true;
+
+            material = new THREE.PointsMaterial({
+                size: 0.05, vertexColors: true, blending: THREE.AdditiveBlending,
+                depthWrite: false, transparent: true, opacity: 0.8, map: texture
+            });
+
+            points = new THREE.Points(geometry, material);
+            scene.add(points);
+        }
+
+        function startColorCycle() {
+            const updateColor = () => {
+                const nextIndex = (currentColorIndex + 1) % COLORS.length;
+                const colorObj = { r: COLORS[currentColorIndex].r, g: COLORS[currentColorIndex].g, b: COLORS[currentColorIndex].b };
+                
+                gsap.to(colorObj, {
+                    r: COLORS[nextIndex].r, g: COLORS[nextIndex].g, b: COLORS[nextIndex].b,
+                    duration: 30, ease: "linear",
+                    onUpdate: () => {
+                        const colors = geometry.attributes.color.array;
+                        for (let i = 0; i < colors.length; i += 3) {
+                            colors[i] = colorObj.r; colors[i+1] = colorObj.g; colors[i+2] = colorObj.b;
+                        }
+                        geometry.attributes.color.needsUpdate = true;
+                    },
+                    onComplete: () => {
+                        currentColorIndex = nextIndex; updateColor();
+                    }
+                });
+            };
+            updateColor();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            time += 0.001;
+
+            if (points) {
+                // Morph Logic
+                const positions = geometry.attributes.position.array;
+                for (let i = 0; i < positions.length; i++) {
+                    const start = basePositions[i];
+                    const end = textPositions[i];
+                    positions[i] = start + (end - start) * morphProgress;
+                }
+                geometry.attributes.position.needsUpdate = true;
+
+                // Zoom Logic (Face)
+                currentScale += (targetScale - currentScale) * 0.05;
+                points.scale.set(currentScale, currentScale, currentScale);
+                
+                // Rotation
+                const lockFactor = Math.pow(morphProgress, 2); 
+                points.rotation.y = (time * 0.2) * (1 - lockFactor);
+                points.rotation.z = (Math.sin(time * 0.5) * 0.05) * (1 - lockFactor);
+            }
+            renderer.render(scene, camera);
+        }
+
+        // ===========================================
+        // PART 2: FACE MESH
+        // ===========================================
+        
+        let faceMesh, cameraUtils;
+        let isCameraRunning = false;
+
+        function initFaceMesh() {
+            const videoElement = document.getElementById('input_video');
+            faceMesh = new FaceMesh({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`});
+            
+            faceMesh.setOptions({
+                maxNumFaces: 1, refineLandmarks: true,
+                minDetectionConfidence: 0.5, minTrackingConfidence: 0.5
+            });
+
+            faceMesh.onResults(onFaceResults);
+
+            cameraUtils = new Camera(videoElement, {
+                onFrame: async () => { await faceMesh.send({image: videoElement}); },
+                width: 320, height: 240
+            });
+        }
+
+        function toggleCamera(enable) {
+            const toast = document.getElementById('toast-msg');
+            if (enable) {
+                if (!faceMesh) initFaceMesh();
+                cameraUtils.start().then(() => {
+                    isCameraRunning = true;
+                    toast.classList.add('show');
+                    setTimeout(() => toast.classList.remove('show'), 5000);
+                }).catch(err => {
+                    alert("Camera permission denied.");
+                    document.getElementById('cam-switch').classList.remove('active');
+                });
+            } else {
+                if (cameraUtils) {
+                    const videoElement = document.getElementById('input_video');
+                    const stream = videoElement.srcObject;
+                    if(stream) stream.getTracks().forEach(track => track.stop());
+                    videoElement.srcObject = null;
+                }
+                isCameraRunning = false;
+                targetScale = 1.0; 
+            }
+        }
+
+        function onFaceResults(results) {
+            if (!isCameraRunning) return;
+            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                const landmarks = results.multiFaceLandmarks[0];
+                const width = Math.sqrt(Math.pow(landmarks[454].x - landmarks[234].x, 2) + Math.pow(landmarks[454].y - landmarks[234].y, 2));
+                targetScale = Math.max(1.0, (width * 6)); 
+            } else {
+                targetScale = 1.0;
+            }
+        }
+
+        // ===========================================
+        // PART 3: SITE LOGIC
+        // ===========================================
+
+        document.addEventListener("DOMContentLoaded", () => {
+            document.body.classList.add('ready');
+            initThree();
+
+            const switchBtn = document.getElementById('cam-switch');
+            switchBtn.addEventListener('click', () => {
+                switchBtn.classList.toggle('active');
+                toggleCamera(switchBtn.classList.contains('active'));
+            });
+
+            window.openPage = function(pageId) {
+                document.getElementById(pageId + '-page').classList.add('active');
+                if(window.lenis) window.lenis.stop();
+            }
+            window.closePage = function(pageId) {
+                document.getElementById(pageId + '-page').classList.remove('active');
+                if(window.lenis) window.lenis.start();
+            }
+
+            gsap.registerPlugin(ScrollTrigger, Flip);
+            
+            gsap.from(".about-intro", {
+                opacity: 0, y: 50, duration: 1.5, ease: "power3.out",
+                scrollTrigger: { trigger: ".about-intro", start: "top 80%" }
+            });
+
+            // Adjusted Morph Timing
+            ScrollTrigger.create({
+                trigger: "body",
+                start: "top top", 
+                endTrigger: ".intro-jp", 
+                end: "bottom 20%", // Early Completion
+                scrub: 1,
+                onUpdate: (self) => { morphProgress = self.progress; }
+            });
+
+            const projects = [
+                { type: 'video', title: 'NEON ROOTS', category: 'BRAND FILM', year: '2025', thumb: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb', video: 'https://videos.pexels.com/video-files/3195394/3195394-uhd_2560_1440_25fps.mp4' },
+                { type: 'photo', title: 'SILENT CONCRETE', category: 'ARCHITECTURAL', year: '2025', thumb: 'https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0', gallery: ['https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0', 'https://images.unsplash.com/photo-1480796927426-f609979314bd', 'https://images.unsplash.com/photo-1506259091721-347f798196d4', 'https://images.unsplash.com/photo-1461301214746-1e790926d323'] },
+                { type: 'video', title: 'LIQUID TIME', category: 'COMMERCIAL', year: '2024', thumb: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe', video: 'https://videos.pexels.com/video-files/3195394/3195394-uhd_2560_1440_25fps.mp4' },
+                { type: 'photo', title: 'URBAN FOSSILS', category: 'ART DIRECTION', year: '2024', thumb: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b', gallery: ['https://images.unsplash.com/photo-1550751827-4bd374c3f58b', 'https://images.unsplash.com/photo-1515630278258-407f66498911', 'https://images.unsplash.com/photo-1505322022379-7c3353ee6291'] },
+                { type: 'video', title: 'PROJECT 05', thumb: 'https://images.unsplash.com/photo-1492691527719-9d1e07e534b4' },
+                { type: 'photo', title: 'PROJECT 06', thumb: 'https://images.unsplash.com/photo-1511447333015-45b65e60f6d5', gallery: ['https://images.unsplash.com/photo-1511447333015-45b65e60f6d5', 'https://images.unsplash.com/photo-1504609773096-104ff2c73ba4'] },
+                { type: 'video', title: 'PROJECT 07', thumb: 'https://images.unsplash.com/photo-1542206395-9feb3edaa68d' },
+                { type: 'photo', title: 'PROJECT 08', thumb: 'https://images.unsplash.com/photo-1505322022379-7c3353ee6291', gallery: ['https://images.unsplash.com/photo-1505322022379-7c3353ee6291'] },
+                { type: 'video', title: 'PROJECT 09', thumb: 'https://images.unsplash.com/photo-1629812456605-4a044aa38fbc' },
+                { type: 'photo', title: 'PROJECT 10', thumb: 'https://images.unsplash.com/photo-1499540633125-484965b60031', gallery: ['https://images.unsplash.com/photo-1499540633125-484965b60031'] },
+                { type: 'video', title: 'PROJECT 11', thumb: 'https://images.unsplash.com/photo-1504609773096-104ff2c73ba4' },
+                { type: 'video', title: 'PROJECT 12', thumb: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb' }
+            ];
+
+            const workList = document.querySelector('.work-list');
+            if (workList) {
+                projects.forEach((proj, i) => {
+                    if(!proj.year) proj.year = '2024';
+                    if(!proj.category) proj.category = proj.type === 'video' ? 'MOTION' : 'STILL';
+                    if(!proj.video) proj.video = 'https://videos.pexels.com/video-files/3195394/3195394-uhd_2560_1440_25fps.mp4';
+                    
+                    const item = document.createElement('div');
+                    item.className = 'work-item hover-target';
+                    item.innerHTML = `
+                        <div class="img-reveal">
+                            <span class="type-badge">${proj.type}</span>
+                            <span class="work-year">${proj.year}</span>
+                            <img src="${proj.thumb}?q=80&w=1200&auto=format&fit=crop" class="parallax-img" alt="${proj.title}" loading="lazy">
+                        </div>
+                        <div class="work-info">
+                            <h2 class="work-title">${proj.title}</h2>
+                            <span class="work-cat">${proj.category}</span>
+                        </div>
+                    `;
+                    item.addEventListener('click', () => openDetail(item, proj));
+                    workList.appendChild(item);
+                });
+            }
+
+            if (typeof Lenis !== 'undefined') {
+                window.lenis = new Lenis({ duration: 1.2, easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)), smooth: true });
+                function raf(time) { window.lenis.raf(time); requestAnimationFrame(raf); }
+                requestAnimationFrame(raf);
+            }
+
+            const cursor = document.getElementById('cursor');
+            const xSet = gsap.quickTo(cursor, "x", {duration: 0.5, ease: "power3"});
+            const ySet = gsap.quickTo(cursor, "y", {duration: 0.5, ease: "power3"});
+            window.addEventListener("mousemove", (e) => { xSet(e.clientX); ySet(e.clientY); });
+            
+            document.addEventListener('mouseover', (e) => {
+                if (e.target.closest('.hover-target')) {
+                    cursor.classList.add('hovered');
+                } else {
+                    cursor.classList.remove('hovered');
+                }
+            });
+
+            const detailOverlay = document.getElementById('detail-overlay');
+            const detailTarget = document.getElementById('detail-target');
+            const videoContainer = document.getElementById('video-container');
+            const projectVideo = document.getElementById('project-video');
+            const galleryContainer = document.getElementById('gallery-container');
+            const galleryTrack = document.getElementById('gallery-track');
+            const detailContent = document.querySelector('.detail-content');
+            const btnText = document.getElementById('btn-text');
+            const btnIcon = document.getElementById('btn-icon');
+
+            let activeItem = null; let activeImg = null; let currentProject = null;
+
+            window.openDetail = function(item, project) {
+                if (activeItem) return;
+                activeItem = item; activeImg = item.querySelector('img'); currentProject = project;
+
+                gsap.killTweensOf(activeImg);
+                const state = Flip.getState(activeImg);
+
+                detailOverlay.classList.add('active');
+                detailTarget.appendChild(activeImg);
+                if(window.lenis) window.lenis.stop();
+
+                document.querySelector('.detail-title').innerText = project.title;
+                document.querySelector('.detail-meta').innerText = `${project.category} / ${project.year}`;
+                
+                if(project.type === 'video') {
+                    btnText.innerText = 'PLAY VIDEO'; btnIcon.innerHTML = '<div class="play-icon"></div>';
+                } else {
+                    btnText.innerText = 'VIEW GALLERY'; btnIcon.innerHTML = '<div class="gallery-icon"></div>';
+                    galleryTrack.innerHTML = '';
+                    if(project.gallery) {
+                        project.gallery.forEach(url => {
+                            const img = document.createElement('img');
+                            img.src = `${url}?q=80&w=1200&auto=format&fit=crop`;
+                            img.className = 'gallery-img';
+                            galleryTrack.appendChild(img);
+                        });
+                    }
+                }
+
+                Flip.from(state, {
+                    duration: 1.0, ease: "power3.inOut", absolute: true, zIndex: 10,
+                    onComplete: () => {
+                        gsap.to(detailContent, { opacity: 1, y: 0, duration: 0.6 });
+                        gsap.to('.close-btn', { opacity: 1, duration: 0.5 });
+                    }
+                });
+
+                gsap.set(detailContent, { y: 30, opacity: 0 });
+                detailContent.classList.remove('hidden');
+                
+                if(project.type === 'video') { projectVideo.src = project.video; projectVideo.load(); }
+            };
+
+            window.activateContent = function() {
+                detailOverlay.classList.add('content-active');
+                gsap.to(detailContent, { opacity: 0, duration: 0.8, ease: "power2.out", onComplete: () => { detailContent.classList.add('hidden'); } });
+
+                if (currentProject.type === 'video') {
+                    videoContainer.classList.add('playing'); projectVideo.play();
+                } else {
+                    galleryContainer.classList.add('playing');
+                    gsap.to('.gallery-img', { opacity: 1, x: 0, duration: 0.8, stagger: 0.1, ease: "power2.out", delay: 0.2 });
+                }
+            };
+
+            window.closeDetail = function() {
+                if (!activeItem || !activeImg) return;
+                if (currentProject.type === 'video') { projectVideo.pause(); videoContainer.classList.remove('playing'); } 
+                else { galleryContainer.classList.remove('playing'); gsap.set('.gallery-img', { opacity: 0, x: 50 }); }
+                
+                detailOverlay.classList.remove('content-active');
+                gsap.to(detailContent, { opacity: 0, duration: 0.3 });
+                gsap.to('.close-btn', { opacity: 0, duration: 0.3 });
+
+                const state = Flip.getState(activeImg);
+                const originalWrapper = activeItem.querySelector('.img-reveal');
+                originalWrapper.appendChild(activeImg);
+                activeImg.style.filter = "";
+
+                detailOverlay.classList.remove('active');
+                Flip.from(state, {
+                    duration: 0.8, ease: "power3.inOut", absolute: true, zIndex: 10,
+                    onComplete: () => {
+                        activeItem = null; activeImg = null; currentProject = null;
+                        if(window.lenis) window.lenis.start();
+                        gsap.set(originalWrapper.querySelector('img'), { clearProps: "all" }); 
+                        ScrollTrigger.refresh();
+                    }
+                });
+            };
+
+            const loader = document.getElementById('loader');
+            const counter = document.querySelector('.loader-count');
+            const brainContainer = document.querySelector('.brain-loader-container');
+            
+            setTimeout(() => { if(loader && loader.style.display!=='none') gsap.to(loader, {yPercent: -100}); }, 4000);
+
+            const countObj = { val: 0 };
+            const loadTl = gsap.timeline();
+            loadTl.to(countObj, {
+                val: 100, duration: 2.5, ease: "expo.inOut",
+                onUpdate: () => { counter.innerText = Math.floor(countObj.val).toString().padStart(2, '0'); }
+            })
+            .to(brainContainer, { scale: 2, opacity: 0, duration: 0.8, ease: "power2.in" }, "-=0.5")
+            .to(loader, {
+                yPercent: -100, duration: 1.2, ease: "power4.inOut",
+                onComplete: () => { loader.style.display = 'none'; }
+            })
+            .from(".hero-title .line", { y: 100, opacity: 0, duration: 1.5, stagger: 0.2, ease: "power4.out" }, "-=0.8");
+
+            document.querySelectorAll('.work-item').forEach(item => {
+                const img = item.querySelector('.parallax-img');
+                gsap.to(img, { y: "20%", ease: "none", scrollTrigger: { trigger: item, start: "top bottom", end: "bottom top", scrub: true } });
+                gsap.from(item, { y: 100, opacity: 0, duration: 1.5, ease: "power4.out", scrollTrigger: { trigger: item, start: "top 85%" } });
+            });
+        });
+    </script>
+</body>
+</html>
