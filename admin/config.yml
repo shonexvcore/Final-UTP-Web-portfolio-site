@@ -1,0 +1,21 @@
+backend:
+  name: git-gateway
+  branch: main
+
+media_folder: "images/uploads"
+public_folder: "/images/uploads"
+
+collections:
+  - name: "works"
+    label: "Works / 作品"
+    folder: "content/works"
+    create: true
+    slug: "{{year}}-{{slug}}"
+    fields:
+      - {label: "Title / タイトル", name: "title", widget: "string"}
+      - {label: "Category / カテゴリ", name: "category", widget: "string"}
+      - {label: "Year / 年度", name: "year", widget: "string", default: "2024"}
+      - {label: "Type / タイプ", name: "type", widget: "select", options: ["video", "photo"]}
+      - {label: "Thumbnail / サムネイル画像", name: "thumb", widget: "image"}
+      - {label: "Video URL", name: "video", widget: "string", required: false}
+      - {label: "Gallery", name: "gallery", widget: "list", required: false, field: {label: "Image", name: "image", widget: "image"}}
