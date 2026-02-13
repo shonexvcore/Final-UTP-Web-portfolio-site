@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Detail | UNDER THE PARK</title>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;600&family=Syncopate:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lenis@1.0.45/dist/lenis.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <style>
+        :root { --bg: #050505; --text: #e0e0e0; --accent: #64ffb4; }
+        body { background: var(--bg); color: var(--text); margin: 0; font-family: 'Manrope', sans-serif; opacity: 0; transition: opacity 0.5s ease; }
+        body.loaded { opacity: 1; }
+        #transition-curtain { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 9999; pointer-events: none; opacity: 1; transition: opacity 0.5s ease; }
+        body.loaded #transition-curtain { opacity: 0; }
+        .header-action { position: fixed; top: 2rem; right: 2rem; z-index: 100; mix-blend-mode: exclusion; }
+        .close-btn { font-family: 'Syncopate', sans-serif; cursor: pointer; border: 1px solid #fff; padding: 0.8rem 2rem; border-radius: 30px; transition: 0.3s; color: #fff; text-decoration: none; display: inline-block; background: rgba(0,0,0,0.3); backdrop-filter: blur(5px); }
+        .close-btn:hover { background: #fff; color: #000; }
+        .hero-media { width: 100%; height: 80vh; background: #111; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        .hero-media img, .hero-media video { width: 100%; height: 100%; object-fit: cover; }
+        .content-area { max-width: 800px; margin: 0 auto; padding: 4rem 2rem; }
+        .meta { font-family: 'Syncopate', sans-serif; color: #888; display: block; margin-bottom: 1rem; }
+        .title { font-family: 'Syncopate', sans-serif; font-size: 3rem; margin-bottom: 2rem; line-height: 1.1; }
+        .desc { font-size: 1.1rem; line-height: 1.8; color: #ccc; margin-bottom: 4rem; }
+        .gallery-area { padding: 0 2rem 4rem 2rem; max-width: 1200px; margin: 0 auto; }
+        .gallery-item { margin-bottom: 2rem; width: 100%; display: flex; justify-content: center; }
+        .gallery-item img { width: auto; max-width: 100%; max-height: 80vh; display: block; object-fit: contain; }
+        .project-nav { display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto; padding: 4rem 2rem; border-top: 1px solid #333; }
+        .nav-btn { cursor: pointer; font-family: 'Syncopate', sans-serif; font-size: 0.9rem; color: #888; transition: color 0.3s; }
+        .nav-btn:hover { color: var(--accent); }
+        .nav-center { text-align: center; cursor: pointer; }
+        .nav-center h2 { font-family: 'Syncopate', sans-serif; font-size: 1.5rem; margin: 0; color: #fff; transition: color 0.3s; }
+        .nav-center span { font-size: 0.7rem; letter-spacing: 0.2em; display: block; margin-bottom: 0.5rem; }
+        .nav-center:hover h2 { color: var(--accent); }
+    </style>
+</head>
+<body>
+    <div id="transition-curtain"></div>
+    <div class="header-action"><div class="close-btn" onclick="goBack()">CLOSE</div></div>
+    <div class="hero-media" id="hero-media"></div>
+    <div class="content-area">
+        <span class="meta" id="p-meta"></span>
+        <h1 class="title" id="p-title"></h1>
+        <p class="desc" id="p-desc">We approach every project with a focus on "Perfect Quality." This visual exploration captures the intersection between digital structure and natural fluidity.</p>
+    </div>
+    <div class="gallery-area" id="gallery-list"></div>
+    <div class="project-nav">
+        <div class="nav-btn" id="prev-btn" onclick="goNav(-1)">PREV</div>
+        <div class="nav-center" onclick="goBack()"><span>BACK TO LIST</span><h2>ARCHIVE</h2></div>
+        <div class="nav-btn" id="next-btn" onclick="goNav(1)">NEXT</div>
+    </div>
+    <script>
+        /* ---【修正箇所：データ管理の改善】--- */
+        // index.htmlのデータと完全に同期
+        const allProjects = [
+            { id: 1, type: 'video', title: 'NEON ROOTS', category: 'BRAND FILM', year: '2025', thumb: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb' },
+            { id: 2, type: 'photo', title: 'SILENT CONCRETE', category: 'ARCHITECTURAL', year: '2025', thumb: 'https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0' },
+            { id: 3, type: 'video', title: 'LIQUID TIME', category: 'COMMERCIAL', year: '2024', thumb: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe' },
+            { id: 4, type: 'photo', title: 'URBAN FOSSILS', category: 'ART DIRECTION', year: '2024', thumb: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b' },
+            { id: 5, type: 'video', title: 'PROJECT 05', thumb: 'https://images.unsplash.com/photo-1492691527719-9d1e07e534b4', category: 'MV', year: '2024' },
+            { id: 6, type: 'photo', title: 'PROJECT 06', thumb: 'https://images.unsplash.com/photo-1511447333015-45b65e60f6d5', category: 'STILL', year: '2024' },
+            { id: 7, type: 'video', title: 'PROJECT 07', thumb: 'https://images.unsplash.com/photo-1542206395-9feb3edaa68d', category: 'CM', year: '2023' },
+            { id: 8, type: 'photo', title: 'PROJECT 08', thumb: 'https://images.unsplash.com/photo-1505322022379-7c3353ee6291', category: 'ART', year: '2023' },
+            { id: 9, type: 'video', title: 'PROJECT 09', thumb: 'https://images.unsplash.com/photo-1629812456605-4a044aa38fbc', category: 'MV', year: '2023' },
+            { id: 10, type: 'photo', title: 'PROJECT 10', thumb: 'https://images.unsplash.com/photo-1499540633125-484965b60031', category: 'STILL', year: '2023' },
+            { id: 11, type: 'video', title: 'PROJECT 11', thumb: 'https://images.unsplash.com/photo-1504609773096-104ff2c73ba4', category: 'CM', year: '2022' },
+            { id: 12, type: 'video', title: 'PROJECT 12', thumb: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb', category: 'FILM', year: '2022' }
+        ];
+
+        let currentProjIndex = 0;
+
+        function loadProjectData(proj) {
+            document.getElementById('p-title').innerText = proj.title;
+            document.getElementById('p-meta').innerText = `${proj.category} / ${proj.year}`;
+            
+            const hero = document.getElementById('hero-media');
+            if(proj.type === 'video') {
+                hero.innerHTML = `<video src="https://videos.pexels.com/video-files/3195394/3195394-uhd_2560_1440_25fps.mp4" autoplay loop muted playsinline controls></video>`;
+            } else {
+                hero.innerHTML = `<img src="${proj.thumb}?q=80&w=1600" alt="">`;
+            }
+
+            const gal = document.getElementById('gallery-list'); 
+            gal.innerHTML = '';
+            // サンプルとしてサムネイルを3枚表示（実際はproj.gallery等を使用可能）
+            const galleryImages = [proj.thumb, proj.thumb, proj.thumb];
+            galleryImages.forEach((src, i) => {
+                const div = document.createElement('div'); 
+                div.className = 'gallery-item'; 
+                div.innerHTML = `<img src="${src}?q=80&w=1200&sig=${i}" loading="lazy">`; 
+                gal.appendChild(div);
+            });
+            window.scrollTo(0,0);
+        }
+
+        function goNav(direction) {
+            currentProjIndex += direction;
+            if(currentProjIndex < 0) currentProjIndex = allProjects.length - 1;
+            if(currentProjIndex >= allProjects.length) currentProjIndex = 0;
+            // ページ遷移カーテンを引いてから移動
+            document.getElementById('transition-curtain').style.opacity = '1';
+            setTimeout(() => {
+                window.location.href = `detail.html?id=${allProjects[currentProjIndex].id}`;
+            }, 500);
+        }
+
+        function goBack() { 
+            document.getElementById('transition-curtain').style.opacity = '1'; 
+            setTimeout(() => { window.location.href = 'index.html'; }, 500); 
+        }
+
+        window.onload = () => {
+            document.body.classList.add('loaded');
+            const lenis = new Lenis();
+            function raf(time) { lenis.raf(time); requestAnimationFrame(raf); }
+            requestAnimationFrame(raf);
+
+            const params = new URLSearchParams(window.location.search);
+            const id = parseInt(params.get('id'));
+            const proj = allProjects.find(p => p.id === id);
+            
+            if(proj) { 
+                currentProjIndex = allProjects.findIndex(p => p.id === proj.id); 
+                loadProjectData(proj); 
+            } else {
+                window.location.href = 'index.html';
+            }
+        };
+        /* ------------------------------------------- */
+    </script>
+</body>
+</html>
